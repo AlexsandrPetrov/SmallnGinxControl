@@ -47,6 +47,37 @@ class RemoteWorker:
             raise OperationError('Edit the original configuration inside nginx root')
         return path
 
+    def flat_dirs(self):
+        """Каталоги, которые nginx.conf подключает целиком (include /etc/nginx/vhosts/*;)."""
+        try:
+            text = (self.root / 'nginx.conf').read_text(encoding='utf-8')
+        except (OSError, UnicodeError):
+            return []
+        names = []
+        prefix = re.escape(str(self.root) + '/')
+        for match in re.finditer(r'(?m)^\s*include\s+(?:' + prefix + r')?([A-Za-z0-9_-]+)/\*;', text):
+            name = match.group(1)
+            if name not in {'sites-enabled', 'conf.d', 'modules'} and name not in names:
+                names.append(name)
+        return [self.root / name for name in names]
+
+    def flat_kind(self, path):
+        for directory in self.flat_dirs():
+            if path.parent == directory:
+                return 'enabled'
+            if path.parent == directory.with_name(directory.name + '.disabled'):
+                return 'disabled'
+        return None
+
+    def flat_counterpart(self, path):
+        for directory in self.flat_dirs():
+            disabled = directory.with_name(directory.name + '.disabled')
+            if path.parent == directory:
+                return disabled / path.name
+            if path.parent == disabled:
+                return directory / path.name
+        raise OperationError('Configuration is not inside a managed site directory')
+
     def command(self, arguments, check=True):
         result = subprocess.run(arguments, capture_output=True, text=True, timeout=20)
         if check and result.returncode:
@@ -91,7 +122,10 @@ class RemoteWorker:
         active = {Path(name).resolve() for name in re.findall(r'^# configuration file (.+):$', result.stdout, re.MULTILINE)}
         warnings = [] if result.returncode == 0 else ['nginx -T: ' + result.stderr[-2000:]]
         files = active - {self.root / 'nginx.conf'}
-        for folder, pattern in [('sites-available', '*'), ('sites-enabled', '*'), ('conf.d', '*.conf'), ('conf.d', '*.conf.disabled')]:
+        folders = [('sites-available', '*'), ('sites-enabled', '*'), ('conf.d', '*.conf'), ('conf.d', '*.conf.disabled')]
+        for directory in self.flat_dirs():
+            folders += [(directory.name, '*'), (directory.name + '.disabled', '*')]
+        for folder, pattern in folders:
             files.update(path.resolve() for path in (self.root / folder).glob(pattern) if path.is_file() and not path.name.startswith('.'))
         configs = []
         total = 0
@@ -110,7 +144,7 @@ class RemoteWorker:
                 certificate_paths = [value for match in certificate_matches for value in match if value]
                 is_tls = bool(re.search(r'(?m)^\s*listen\s+[^;]*\bssl\b', config['content']))
                 certificate = certificate_details(certificate_paths) if is_tls else None
-                configs.append({**config, 'enabled': path in active and not maintenance, 'maintenance': maintenance, 'certificate_days': certificate['days_remaining'] if certificate else None, 'certificate': certificate, 'toggleable': path.parent in [self.root / 'conf.d', self.root / 'sites-available']})
+                configs.append({**config, 'enabled': path in active and not maintenance, 'maintenance': maintenance, 'certificate_days': certificate['days_remaining'] if certificate else None, 'certificate': certificate, 'toggleable': path.parent in [self.root / 'conf.d', self.root / 'sites-available'] or bool(self.flat_kind(path))})
             except (OSError, UnicodeError, OperationError) as error:
                 warnings.append(identifier + ': ' + str(error))
         return {'configs': configs, 'warnings': warnings}
@@ -239,7 +273,8 @@ class RemoteWorker:
             )
             stored.unlink(missing_ok=True)
             return result
-        active = (path.parent == self.root / 'sites-available' and any(link.is_symlink() and link.resolve() == path for link in (self.root / 'sites-enabled').glob('*'))) or (path.parent == self.root / 'conf.d' and path.suffix == '.conf')
+        flat = self.flat_kind(path)
+        active = (path.parent == self.root / 'sites-available' and any(link.is_symlink() and link.resolve() == path for link in (self.root / 'sites-enabled').glob('*'))) or (path.parent == self.root / 'conf.d' and path.suffix == '.conf') or flat == 'enabled'
         if not enabled and active and has_proxy_server(old):
             self.require_maintenance_page()
             if stored.exists():
@@ -286,6 +321,21 @@ class RemoteWorker:
                     for item, target in targets.items():
                         if not os.path.lexists(item):
                             item.symlink_to(target)
+        elif flat:
+            if enabled == (flat == 'enabled'):
+                return 'State unchanged'
+            destination = self.flat_counterpart(path)
+            if destination.exists():
+                raise OperationError('Destination already exists')
+
+            def change():
+                # Перенос, а не переименование: nginx подключает из каталога все файлы.
+                destination.parent.mkdir(mode=0o755, exist_ok=True)
+                path.rename(destination)
+
+            def rollback():
+                if destination.exists() and not path.exists():
+                    destination.rename(path)
         else:
             raise OperationError('Custom includes must be edited in nginx.conf')
         return apply_transaction(change, rollback, self.validate, self.reload)
@@ -304,7 +354,7 @@ class RemoteWorker:
     def delete(self, identifier, path, content):
         standard_site = path.parent == self.root / 'sites-available'
         standard_conf = path.parent == self.root / 'conf.d' and (path.name.endswith('.conf') or path.name.endswith('.conf.disabled'))
-        if not standard_site and not standard_conf:
+        if not standard_site and not standard_conf and not self.flat_kind(path):
             raise OperationError('Only standard virtual host configurations can be deleted')
         config = next((item for item in self.inventory()['configs'] if item['id'] == identifier), None)
         if config is None or not config['toggleable']:
