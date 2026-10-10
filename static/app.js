@@ -250,12 +250,13 @@ function chartColors() {
 function makeCharts() {
   Object.values(state.charts).forEach((chart) => chart.destroy());
   const colors = chartColors();
-  Chart.defaults.font.family = 'Manrope';
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.font.size = 12;
   Chart.defaults.color = colors.muted;
   const dataset = (label, color, fill) => ({label, data: [], borderColor: color, backgroundColor: color + '0a', borderWidth: 2, pointRadius: 0, pointHitRadius: 9, tension: .3, fill});
   state.charts.traffic = new Chart(query('#traffic-chart'), {
     type: 'line', data: {labels: [], datasets: [dataset('Получено', colors.cyan, true), dataset('Отправлено', colors.violet, false)]},
-    options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}, tooltip: {callbacks: {label: (context) => `${context.dataset.label}: ${number(context.parsed.y, 2)} МБ/с`}}}, scales: {x: {grid: {display: false}, border: {display: false}, ticks: {maxTicksLimit: 7, maxRotation: 0, font: {size: 9}, padding: 9}}, y: {beginAtZero: true, suggestedMax: 6, border: {display: false}, grid: {color: colors.grid}, ticks: {maxTicksLimit: 5, font: {size: 9}, padding: 8}}}},
+    options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false}, plugins: {legend: {display: false}, tooltip: {callbacks: {label: (context) => `${context.dataset.label}: ${number(context.parsed.y, 2)} МБ/с`}}}, scales: {x: {grid: {display: false}, border: {display: false}, ticks: {maxTicksLimit: 7, maxRotation: 0, font: {size: 12}, padding: 9}}, y: {beginAtZero: true, suggestedMax: 6, border: {display: false}, grid: {color: colors.grid}, ticks: {maxTicksLimit: 5, font: {size: 12}, padding: 8}}}},
   });
   for (const [name, color] of [['cpu', colors.violet], ['lan', colors.cyan]]) {
     state.charts[name] = new Chart(query(`#${name}-spark`), {type: 'line', data: {labels: [], datasets: [dataset(name, color, true)]}, options: {responsive: true, maintainAspectRatio: false, animation: false, events: [], plugins: {legend: {display: false}, tooltip: {enabled: false}}, scales: {x: {display: false}, y: {display: false, beginAtZero: true}}}});
@@ -905,13 +906,25 @@ query('#export-logs-xml').addEventListener('click', () => {
 });
 query('#chart-range').addEventListener('change', renderMetrics);
 query('#refresh-traffic-top').addEventListener('click', (event) => runAction(event.currentTarget, refreshTrafficTop));
-query('#theme-toggle').addEventListener('click', () => {
+function renderThemeSwitch() {
+  const light = document.documentElement.dataset.theme === 'light';
+  const button = query('#theme-switch');
+  if (!button) return;
+  // Кнопка показывает тему, на которую переключит.
+  button.innerHTML = `<i data-lucide="${light ? 'moon' : 'sun'}"></i><span>${light ? 'Тёмная' : 'Светлая'}</span>`;
+  button.title = light ? 'Включить тёмную тему' : 'Включить светлую тему';
+  icons();
+}
+function toggleTheme() {
   const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   document.documentElement.dataset.theme = theme;
-  localStorage.setItem('snc-theme', theme);
+  try { localStorage.setItem('snc-theme', theme); } catch (error) { /* без хранилища */ }
+  renderThemeSwitch();
   makeCharts();
   renderMetrics();
-});
+}
+query('#theme-toggle').addEventListener('click', toggleTheme);
+query('#theme-switch').addEventListener('click', toggleTheme);
 query('#menu-toggle').addEventListener('click', () => {
   const open = query('#sidebar').classList.toggle('open');
   query('#sidebar-backdrop').hidden = !open;
@@ -1128,7 +1141,8 @@ query('#servers-table').addEventListener('click', async (event) => {
 });
 
 async function initialize() {
-  document.documentElement.dataset.theme = localStorage.getItem('snc-theme') || 'dark';
+  // Тему уже выставил theme.js (сохранённый выбор или настройка системы).
+  renderThemeSwitch();
   icons();
   makeCharts();
   try { await refreshServers(); await loadServerContext(state.serverId); }

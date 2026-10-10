@@ -1,0 +1,174 @@
+/* Читаемость и полноценная светлая тема поверх app.css/traffic.css.
+   Системный шрифт интерфейса вместо тонкого Manrope на мелких размерах, крупнее кегль,
+   выше контраст, цвета без «зашитых» тёмных оттенков. */
+
+:root {
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", "DejaVu Sans Mono", Consolas, monospace;
+  --text: #f2f4fa;
+  --muted: #a6b0c6;
+  --border: #2d3449;
+  --surface: #131929;
+  --surface-hover: #1c2438;
+  --accent-text: #c4b2ff;
+  --accent-bg: rgba(121, 85, 223, .18);
+  --accent-border: rgba(121, 85, 223, .45);
+}
+
+html[data-theme=light] {
+  --bg: #f3f5f9;
+  --sidebar: #ffffff;
+  --surface: #ffffff;
+  --surface-hover: #edf0f6;
+  --text: #111827;
+  --muted: #4b5568;
+  --border: #d3d9e4;
+  --input: #ffffff;
+  --cyan: #0b6f86;
+  --violet: #6234c9;
+  --primary: #5b34cf;
+  --green: #0b7a50;
+  --amber: #a15c07;
+  --red: #b4233c;
+  --grid: rgba(55, 65, 81, .14);
+  --accent-text: #4b23b8;
+  --accent-bg: rgba(91, 52, 207, .10);
+  --accent-border: rgba(91, 52, 207, .35);
+}
+
+/* ---------- шрифт и базовый размер ---------- */
+body { font-family: var(--font-ui); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: auto; }
+.mono, .target-cell, #log-content, .code-editor, .terminal-header { font-family: var(--font-mono) !important; }
+h1 { font-size: 28px; font-weight: 700; }
+h2 { font-size: 17px; font-weight: 700; }
+h3 { font-size: 15px; font-weight: 650; }
+label, .settings-section form label, .modal label, .login-form label { font-size: 13px; font-weight: 600; }
+input, select, textarea { font-size: 14px; }
+.small { font-size: 12px; }
+.eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+
+/* ---------- боковое меню ---------- */
+.brand { font-size: 19px; }
+.brand-sub { font-size: 15px; }
+.version { font-size: 11px; }
+.workspace-label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .06em; }
+.nav-item { font-size: 14px; font-weight: 600; min-height: 42px; color: var(--muted); }
+.nav-item:hover { color: var(--text); background: var(--surface-hover); }
+.nav-item.active { color: var(--accent-text); background: var(--accent-bg); border-color: var(--accent-border); }
+.nav-item.active svg { color: var(--accent-text); }
+.nav-count { font-size: 11px; font-weight: 700; padding: 1px 6px; }
+.server-mini strong { font-size: 13px; }
+.server-mini span, #side-status { font-size: 12px; }
+.sidebar-footer { font-size: 11px; }
+
+/* ---------- верхняя панель ---------- */
+.breadcrumb, .topbar-right { font-size: 13px; }
+.breadcrumb strong { font-weight: 650; }
+.account-name { font-weight: 650; font-size: 13px; }
+.avatar { background: var(--accent-bg); color: var(--accent-text); border-color: var(--accent-border); font-size: 13px; }
+.theme-switch { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 6px 11px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--surface); color: var(--text); font-size: 13px; font-weight: 600; }
+.theme-switch:hover { background: var(--surface-hover); }
+.theme-switch svg { width: 16px; height: 16px; }
+
+/* ---------- заголовки страниц и кнопки ---------- */
+.page-heading p { font-size: 14px; }
+.button { font-size: 14px; font-weight: 650; min-height: 40px; }
+.button.primary { box-shadow: none; }
+html[data-theme=light] .button.primary:hover { background: #4a27b0; }
+.badge { font-size: 12px; font-weight: 650; padding: 3px 8px; }
+.demo-banner, .demo-banner > span:nth-child(2) { font-size: 13px; }
+.demo-tag { font-size: 11px; }
+
+/* ---------- метрики и графики ---------- */
+.metric-label { font-size: 13px; font-weight: 600; }
+.metric-value { font-size: 30px; }
+.metric-value small { font-size: 14px; }
+.metric-caption { font-size: 12px; }
+.traffic-metric .metric-caption { font-size: 12px; }
+.transfer-line strong { font-size: 21px; }
+.transfer-line span { font-size: 12px; }
+.chart-legend, .chart-legend strong { font-size: 12px; }
+.section-heading .small { font-size: 12px; }
+.section-heading select { font-size: 13px; }
+.resource-heading, .resource-heading strong { font-size: 13px; }
+.system-details { font-size: 13px; }
+html[data-theme=light] .metric { background: var(--surface); box-shadow: 0 1px 2px rgba(16, 24, 40, .05); }
+
+/* ---------- таблицы ---------- */
+.data-table th { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .03em; text-transform: uppercase; }
+.data-table td { font-size: 14px; padding: 14px 12px; }
+.domain-name { font-size: 15px; font-weight: 650; }
+.domain-path { font-size: 12px; max-width: 320px; }
+.target-cell { font-size: 13px !important; color: var(--muted); }
+.protocol { font-size: 12px; font-weight: 600; }
+.host-traffic, .certificate-expiry { font-size: 12px; }
+.domain-expiry { font-size: 11px; padding: 2px 7px; }
+.segmented button { font-size: 13px; font-weight: 600; }
+.search-field input { font-size: 14px; width: 280px; }
+.table-footer, .editor-footer, .app-footer { font-size: 12px; }
+.app-footer > span:last-child { font-size: 11px; }
+.count-label, .text-link { font-size: 12px; }
+.audit-detail { font-size: 13px; }
+.row-actions .icon-button { width: 32px; min-width: 32px; height: 32px; }
+.row-actions .icon-button svg { width: 16px; height: 16px; }
+.toggle { width: 34px; height: 19px; min-width: 34px; }
+.toggle:after { width: 13px; height: 13px; left: 16px; }
+.toggle[aria-checked=false]:after { left: 2px; }
+
+/* ---------- формы, окна, сообщения ---------- */
+.check-label { font-size: 13px; }
+.ssl-create-options .check-label, .ssl-create-options > label:not(.check-label) { font-size: 13px; }
+.certificate-details dt, .certificate-details dd { font-size: 13px; }
+.settings-details, .settings-section form label { font-size: 14px; }
+.modal h2 { font-size: 21px; }
+.confirm-modal p { font-size: 14px; }
+.form-error, .operation-result, .warning-list, .toast { font-size: 14px; }
+.terminal-header { font-size: 13px; }
+#log-content { font-size: 13px; color: var(--text); }
+.code-editor { font-size: 13px; }
+.about-terms, .about-meta { font-size: 13px; }
+.login-heading p, .login-form label { font-size: 14px; }
+.login-demo, .login-secure, .login-footer { font-size: 12px; }
+
+/* ---------- светлая тема: элементы с «тёмными» цветами в app.css ---------- */
+html[data-theme=light] .dot-separator { color: var(--muted); }
+html[data-theme=light] .modal { box-shadow: 0 20px 60px rgba(16, 24, 40, .18); }
+html[data-theme=light] .modal::backdrop { background: rgba(16, 24, 40, .45); }
+html[data-theme=light] .toast { box-shadow: 0 6px 24px rgba(16, 24, 40, .14); }
+html[data-theme=light] .segmented button.selected { background: var(--surface-hover); box-shadow: 0 1px 2px rgba(16, 24, 40, .12); }
+html[data-theme=light] .badge.success { background: #e7f6ef; border-color: #a7dcc4; }
+html[data-theme=light] .badge.warning { background: #fdf3e2; border-color: #f0cf96; }
+html[data-theme=light] .badge.error, html[data-theme=light] .form-error, html[data-theme=light] .operation-result:not(.success) { background: #fdecef; border-color: #f2b8c3; }
+html[data-theme=light] .operation-result.success { background: #e7f6ef; border-color: #a7dcc4; }
+html[data-theme=light] .toggle { background: #d9f2e6; border-color: #8fd3b4; }
+html[data-theme=light] .toggle[aria-checked=false] { background: var(--surface-hover); border-color: var(--border); }
+html[data-theme=light] .demo-banner { background: #fdf3e2; border-color: #f0cf96; }
+html[data-theme=light] .login-page { background: var(--bg); }
+html[data-theme=light] .data-table th { background: var(--surface-hover); }
+html[data-theme=light] .data-table tr:hover td { background: #f7f8fb; }
+html[data-theme=light] .confirm-icon { background: #fdf3e2; }
+html[data-theme=light] .domain-icon { background: var(--surface-hover); }
+
+@media (max-width: 900px) {
+  .theme-switch span { display: none; }
+  .search-field input { width: 100%; }
+}
+
+/* ---------- ширина меню и список серверов ---------- */
+@media (min-width: 1201px) {
+  .sidebar { width: 256px; }
+  .app-shell { margin-left: 256px; }
+}
+@media (max-width: 1200px) {
+  .nav-item { font-size: 13px; }
+}
+.nav-item { white-space: nowrap; }
+.topbar select { font-size: 14px; font-weight: 600; min-height: 38px; }
+.system-details dt, .system-details dd, .resource-heading > span { font-size: 13px; }
+/* Карточки метрик растут по содержимому: крупный шрифт не обрезается на узких экранах. */
+.metric { height: auto; min-height: 156px; padding-bottom: 44px; }
+@media (max-width: 760px) {
+  .metric-value { font-size: 26px; }
+  .metric-label { font-size: 12px; }
+}
