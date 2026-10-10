@@ -153,7 +153,10 @@ class NginxManager:
 
     def inventory(self):
         files, warnings, active_files = set(), [], set()
-        for folder, pattern in [('sites-available', '*'), ('sites-enabled', '*'), ('conf.d', '*.conf'), ('conf.d', '*.conf.disabled')]:
+        folders = [('sites-available', '*'), ('sites-enabled', '*'), ('conf.d', '*.conf'), ('conf.d', '*.conf.disabled')]
+        for name in settings.SNC_FLAT_SITE_DIRS:
+            folders += [(name, '*'), (name + '.disabled', '*')]
+        for folder, pattern in folders:
             for path in (self.root / folder).glob(pattern):
                 if path.is_file() and not path.name.startswith('.'):
                     if path.resolve().is_relative_to(self.root):
@@ -184,7 +187,8 @@ class NginxManager:
                 links = self.links(path)
                 standard_conf = path.parent == self.root / 'conf.d'
                 standard_site = path.parent == self.root / 'sites-available'
-                enabled = bool(links) or (standard_conf and path.suffix == '.conf') or path.parent == self.root / 'sites-enabled'
+                flat = self.flat_kind(path)
+                enabled = bool(links) or (standard_conf and path.suffix == '.conf') or path.parent == self.root / 'sites-enabled' or flat == 'enabled'
                 if not self.demo:
                     enabled = path in active_files
                 if maintenance:
@@ -193,12 +197,33 @@ class NginxManager:
                 is_tls = any('ssl' in node['args'] for node in walk(nodes) if node['directive'] == 'listen')
                 certificate = certificate_details(certificates) if is_tls else None
                 certificate_days = certificate['days_remaining'] if certificate else None
-                item = describe_configuration(nodes, identifier, revision(content), enabled, standard_site or standard_conf, maintenance, certificate_days, certificate)
+                item = describe_configuration(nodes, identifier, revision(content), enabled, bool(standard_site or standard_conf or flat), maintenance, certificate_days, certificate)
                 if item:
                     items.append(item)
             except (OperationError, OSError, UnicodeError) as error:
                 warnings.append(f'{identifier}: {error}')
         return {'items': items, 'warnings': warnings}
+
+    def flat_dirs(self):
+        return tuple(self.root / name for name in settings.SNC_FLAT_SITE_DIRS)
+
+    def flat_kind(self, path):
+        """'enabled' — файл в каталоге с include dir/*; 'disabled' — в соседнем dir.disabled; иначе None."""
+        for directory in self.flat_dirs():
+            if path.parent == directory:
+                return 'enabled'
+            if path.parent == directory.with_name(directory.name + '.disabled'):
+                return 'disabled'
+        return None
+
+    def flat_counterpart(self, path):
+        for directory in self.flat_dirs():
+            disabled = directory.with_name(directory.name + '.disabled')
+            if path.parent == directory:
+                return disabled / path.name
+            if path.parent == disabled:
+                return directory / path.name
+        raise OperationError('Файл не находится в управляемом каталоге сайтов.')
 
     def links(self, path):
         return [link for link in (self.root / 'sites-enabled').glob('*') if link.is_symlink() and link.resolve() == path.resolve()]
@@ -298,7 +323,8 @@ class NginxManager:
                 )
                 stored.unlink(missing_ok=True)
                 return result
-            active = (path.parent == self.root / 'sites-available' and bool(self.links(path))) or (path.parent == self.root / 'conf.d' and path.suffix == '.conf')
+            flat = self.flat_kind(path)
+            active = (path.parent == self.root / 'sites-available' and bool(self.links(path))) or (path.parent == self.root / 'conf.d' and path.suffix == '.conf') or flat == 'enabled'
             if not enabled and active and has_proxy_server(current):
                 self.require_maintenance_page()
                 if stored.exists():
@@ -345,6 +371,21 @@ class NginxManager:
                 def rollback():
                     if destination.exists():
                         destination.rename(path)
+            elif flat:
+                if enabled == (flat == 'enabled'):
+                    return 'Состояние уже установлено.'
+                destination = self.flat_counterpart(path)
+                if destination.exists():
+                    raise OperationError('Целевое имя уже занято.')
+
+                def change():
+                    # Перенос, а не переименование: nginx подключает из каталога все файлы.
+                    destination.parent.mkdir(mode=0o755, exist_ok=True)
+                    path.rename(destination)
+
+                def rollback():
+                    if destination.exists() and not path.exists():
+                        destination.rename(path)
             else:
                 raise OperationError('Для нестандартного include измените nginx.conf вручную.')
             self.backup(identifier, current)
@@ -374,7 +415,7 @@ class NginxManager:
                 raise OperationError('Конфигурация изменилась. Обновите список.')
             standard_site = path.parent == self.root / 'sites-available'
             standard_conf = path.parent == self.root / 'conf.d' and (path.name.endswith('.conf') or path.name.endswith('.conf.disabled'))
-            if not standard_site and not standard_conf:
+            if not standard_site and not standard_conf and not self.flat_kind(path):
                 raise OperationError('Удалять можно только стандартные конфигурации сайтов.')
             item = next((item for item in self.inventory()['items'] if item['id'] == identifier), None)
             if item is None or not item['toggleable']:
@@ -521,8 +562,11 @@ class NginxManager:
         else:
             name, filename, content = self.render_site(data)
         with self.lock():
-            path = self.path('conf.d/' + filename)
-            if path.exists() or path.with_name(filename + '.disabled').exists():
+            site_dir = settings.SNC_NEW_SITE_DIR
+            path = self.path(f'{site_dir}/{filename}')
+            disabled_twin = (path.with_name(filename + '.disabled') if site_dir == 'conf.d'
+                             else self.root / (site_dir + '.disabled') / filename)
+            if path.exists() or disabled_twin.exists():
                 raise OperationError('Конфигурация с таким именем уже существует.')
             for item in self.inventory()['items']:
                 if name in item['domains']:
@@ -555,7 +599,7 @@ class NginxManager:
                 except Exception as cleanup_error:
                     raise OperationError(f'Certbot failed ({error}); temporary HTTP host rollback failed ({cleanup_error}).') from error
                 raise OperationError(f'Certbot не выпустил сертификат; временный HTTP-хост удалён: {error}') from error
-            self.backup('conf.d/' + filename, content.encode())
+            self.backup(f'{site_dir}/{filename}', content.encode())
             result = apply_transaction(
                 lambda: atomic_write(path, https_content.encode()),
                 lambda: atomic_write(path, content.encode()),

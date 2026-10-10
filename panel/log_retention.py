@@ -19,7 +19,8 @@ def rotate_and_prune_host_logs(log_root, retention_days, *, today=None, reopen=N
         return {'rotated': 0, 'deleted': 0}
 
     current_date = today or date.today()
-    now = datetime.now()
+    # Имя архива — от той же даты, по которой считается срок хранения (важно для тестов и повторных запусков).
+    now = datetime.combine(current_date, datetime.now().time())
     rotated = []
     active_logs = [path for path in root.glob('*-data.log') if path.is_file() and not path.is_symlink()]
     for path in active_logs:

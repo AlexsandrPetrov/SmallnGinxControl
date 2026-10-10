@@ -21,10 +21,17 @@ PANEL_WELCOME_BRAND_FILE=/var/www/html/smallnginxcontrol-brand.png
 PANEL_WELCOME_LATIN_FONT=/var/www/html/smallnginxcontrol-manrope-latin.woff2
 PANEL_WELCOME_CYRILLIC_FONT=/var/www/html/smallnginxcontrol-manrope-cyrillic.woff2
 PANEL_WELCOME_CREATED=0
-PANEL_WELCOME_ENABLED=1
+PANEL_WELCOME_ENABLED=${SNC_WELCOME:-1}
+# Сети, которым nginx разрешит открыть панель (CIDR через запятую); пусто — без ограничений.
+PANEL_ALLOW=${SNC_PANEL_ALLOW:-}
+MAINTENANCE_ROOT=${SNC_MAINTENANCE_ROOT:-/var/www/html}
 
 if [[ ! $INSTALL_DIR =~ ^/[A-Za-z0-9_./-]+$ || $INSTALL_DIR == / || $INSTALL_DIR == *..* ]]; then
     echo 'SNC_INSTALL_DIR must be a simple absolute path without spaces or parent references.' >&2
+    exit 1
+fi
+if [[ $PANEL_ALLOW && ! $PANEL_ALLOW =~ ^[0-9a-fA-F:./,]+$ ]]; then
+    echo 'SNC_PANEL_ALLOW must be a comma-separated list of IPs/CIDRs.' >&2
     exit 1
 fi
 for welcome_file in "$PANEL_WELCOME_FILE" "$PANEL_WELCOME_BRAND_FILE" "$PANEL_WELCOME_LATIN_FONT" "$PANEL_WELCOME_CYRILLIC_FONT"; do
@@ -44,9 +51,15 @@ for command in git python3 systemctl; do
     command -v "$command" >/dev/null || { echo "Missing required command: $command" >&2; exit 1; }
 done
 if ! command -v nginx >/dev/null; then
-    command -v apt-get >/dev/null || { echo 'nginx is required; install it before running this installer.' >&2; exit 1; }
-    apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx
+    if command -v apt-get >/dev/null; then
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx
+    elif command -v dnf >/dev/null; then
+        dnf install -y nginx
+    else
+        echo 'nginx is required; install it before running this installer.' >&2
+        exit 1
+    fi
 fi
 systemctl enable --now nginx
 
@@ -95,15 +108,30 @@ while true; do
     echo 'Enter a plain IPv4 address or DNS name, without scheme or port.' >&2
 done
 
-if ! python3 -m venv "$INSTALL_DIR/.venv"; then
+# Python 3.12+: на RED OS/RHEL python3 бывает 3.11 — ставим python3.12 рядом, системный не трогаем.
+PYTHON_BIN=${SNC_PYTHON:-}
+if [[ -z $PYTHON_BIN ]]; then
+    for candidate in python3.13 python3.12 python3; do
+        if command -v "$candidate" >/dev/null && "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 12))'; then
+            PYTHON_BIN=$candidate
+            break
+        fi
+    done
+fi
+if [[ -z $PYTHON_BIN ]] && command -v dnf >/dev/null; then
+    dnf install -y python3.12
+    PYTHON_BIN=python3.12
+fi
+PYTHON_BIN=${PYTHON_BIN:-python3}
+if ! "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"; then
     rm -rf "$INSTALL_DIR/.venv"
-    python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+    python_version=$("$PYTHON_BIN" -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
     venv_package="python${python_version}-venv"
     if ! command -v apt-get >/dev/null || ! apt-get update || ! DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$venv_package"; then
         printf 'Could not install %s automatically. Install it manually and rerun.\n' "$venv_package" >&2
         exit 1
     fi
-    if ! python3 -m venv "$INSTALL_DIR/.venv"; then
+    if ! "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"; then
         rm -rf "$INSTALL_DIR/.venv"
         printf 'Could not create the virtual environment after installing %s.\n' "$venv_package" >&2
         exit 1
@@ -111,6 +139,15 @@ if ! python3 -m venv "$INSTALL_DIR/.venv"; then
     printf 'Installed %s and created the virtual environment.\n' "$venv_package"
 fi
 "$INSTALL_DIR/.venv/bin/python" -m pip install --disable-pip-version-check --no-input -r "$INSTALL_DIR/requirements.txt"
+
+# Каталоги, которые nginx.conf подключает целиком (include /etc/nginx/vhosts/*;) — сайты в них
+# панель включает и отключает переносом в <каталог>.disabled.
+FLAT_SITE_DIRS=${SNC_FLAT_SITE_DIRS-$(grep -hoE '^[[:space:]]*include[[:space:]]+(/etc/nginx/)?[A-Za-z0-9_-]+/\*;' /etc/nginx/nginx.conf 2>/dev/null \
+    | sed -E 's#^[[:space:]]*include[[:space:]]+(/etc/nginx/)?##; s#/\*;$##' | grep -vxE 'sites-enabled|conf\.d|modules' | paste -sd, -)}
+NEW_SITE_DIR=${SNC_NEW_SITE_DIR:-conf.d}
+if [[ -n $FLAT_SITE_DIRS ]]; then
+    printf 'Site directories included as a whole: %s\n' "$FLAT_SITE_DIRS"
+fi
 
 install -d -o root -g root -m 0700 "$STATE_DIR"
 INSTALL_STARTED=1
@@ -121,8 +158,11 @@ SNC_STATE_DIR=$STATE_DIR
 SNC_NGINX_ROOT=/etc/nginx
 SNC_LOG_ROOT=/var/log/nginx
 SNC_LOG_EXTRA_ROOTS=/var/http
-SNC_MAINTENANCE_ROOT=/var/www/html
-SNC_ACME_WEBROOT=/var/www/html
+SNC_MAINTENANCE_ROOT=$MAINTENANCE_ROOT
+SNC_ACME_WEBROOT=${SNC_ACME_WEBROOT:-/var/www/html}
+SNC_FLAT_SITE_DIRS=$FLAT_SITE_DIRS
+SNC_NEW_SITE_DIR=$NEW_SITE_DIR
+SNC_PANEL_ALLOW=$PANEL_ALLOW
 SNC_CERTBOT_BIN=/usr/bin/certbot
 SNC_CERTBOT_LIVE_ROOT=/etc/letsencrypt/live
 SNC_NGINX_BIN=/usr/sbin/nginx
@@ -146,6 +186,32 @@ sed "s|/opt/smallnginxcontrol|$INSTALL_DIR|g" "$INSTALL_DIR/deploy/smallnginxcon
 install -o root -g root -m 0644 "$cleanup_service_temp" "$CLEANUP_SERVICE_FILE"
 rm -f "$cleanup_service_temp"
 install -o root -g root -m 0644 "$INSTALL_DIR/deploy/smallnginxcontrol-log-cleanup.timer" "$CLEANUP_TIMER_FILE"
+
+# Страница обслуживания и общий snippet: их подключают сайты, созданные панелью.
+install -d -o root -g root -m 0755 "$MAINTENANCE_ROOT"
+if [[ ! -e $MAINTENANCE_ROOT/maitenance.html ]]; then
+    cat > "$MAINTENANCE_ROOT/maitenance.html" <<'HTML'
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Технические работы</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:16px/1.5 system-ui,sans-serif;background:#f4f5f7;color:#1f2933}
+main{max-width:520px;padding:32px;text-align:center}h1{font-size:26px;margin:0 0 8px}</style></head>
+<body><main><h1>Сайт временно недоступен</h1><p>Идут технические работы. Попробуйте зайти чуть позже.</p></main></body></html>
+HTML
+    chmod 0644 "$MAINTENANCE_ROOT/maitenance.html"
+fi
+if [[ ! -e /etc/nginx/snippets/maintenance_all.conf ]]; then
+    install -d -o root -g root -m 0755 /etc/nginx/snippets
+    cat > /etc/nginx/snippets/maintenance_all.conf <<SNIPPET
+# SmallnGinxControl: страница при недоступности сайта (подключается в server-блоки, созданные панелью).
+error_page 502 503 504 =503 /maitenance.html;
+location = /maitenance.html {
+    root $MAINTENANCE_ROOT;
+    internal;
+}
+SNIPPET
+    chmod 0644 /etc/nginx/snippets/maintenance_all.conf
+fi
 
 set -a
 . "$ENV_FILE"

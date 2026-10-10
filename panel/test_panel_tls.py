@@ -92,3 +92,18 @@ class PanelTlsTests(SimpleTestCase):
 
         with self.assertRaisesRegex(OperationError, 'не соответствует'):
             replace_panel_certificate(certificate_pem, different_key)
+
+class PanelAccessRulesTests(SimpleTestCase):
+    def test_no_rules_without_setting(self):
+        from .panel_tls import _access_rules
+        with override_settings(SNC_PANEL_ALLOW=()):
+            self.assertEqual(_access_rules(), '')
+
+    def test_allow_lan_and_deny_others(self):
+        from .panel_tls import _access_rules
+        with override_settings(SNC_PANEL_ALLOW=('192.168.2.0/24', '10.8.0.5')):
+            rules = _access_rules()
+        self.assertIn('allow 127.0.0.1/32;', rules)
+        self.assertIn('allow 192.168.2.0/24;', rules)
+        self.assertIn('allow 10.8.0.5/32;', rules)
+        self.assertTrue(rules.rstrip().endswith('deny all;'))

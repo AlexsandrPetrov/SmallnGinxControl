@@ -73,6 +73,18 @@ SNC_ACME_WEBROOT = Path(os.environ.get('SNC_ACME_WEBROOT', '/var/www/html'))
 SNC_CERTBOT_BIN = os.environ.get('SNC_CERTBOT_BIN', '/usr/bin/certbot')
 SNC_CERTBOT_LIVE_ROOT = Path(os.environ.get('SNC_CERTBOT_LIVE_ROOT', '/etc/letsencrypt/live'))
 NGINX_BIN = os.environ.get('SNC_NGINX_BIN', '/usr/sbin/nginx')
+# Каталоги, из которых nginx.conf подключает все файлы (например, include /etc/nginx/vhosts/*;).
+# Отключённые сайты переносятся в соседний каталог "<имя>.disabled", который nginx не подключает.
+SNC_FLAT_SITE_DIRS = tuple(
+    value.strip().strip('/') for value in os.environ.get('SNC_FLAT_SITE_DIRS', '').split(',')
+    if value.strip() and '/' not in value.strip().strip('/') and value.strip() not in {'.', '..'}
+)
+# Куда создавать новые сайты: conf.d (по умолчанию) или один из SNC_FLAT_SITE_DIRS.
+SNC_NEW_SITE_DIR = os.environ.get('SNC_NEW_SITE_DIR', 'conf.d').strip().strip('/') or 'conf.d'
+if SNC_NEW_SITE_DIR != 'conf.d' and SNC_NEW_SITE_DIR not in SNC_FLAT_SITE_DIRS:
+    raise RuntimeError('SNC_NEW_SITE_DIR must be conf.d or one of SNC_FLAT_SITE_DIRS')
 SNC_SERVER = os.environ.get('SNC_SERVER', '192.0.2.15')
 SNC_PORT = int(os.environ.get('SNC_PORT', '7444'))
 SNC_INTERFACE = os.environ.get('SNC_INTERFACE', '')
+# Сети, которым nginx разрешает открыть панель (CIDR через запятую). Пусто — без ограничений.
+SNC_PANEL_ALLOW = tuple(value.strip() for value in os.environ.get('SNC_PANEL_ALLOW', '').split(',') if value.strip())

@@ -104,9 +104,21 @@ def validate_certificate_pair(certificate_pem, private_key_pem):
     return certificate, private_key
 
 
+def _access_rules():
+    """allow/deny для панели из SNC_PANEL_ALLOW (CIDR через запятую); пусто — доступ без ограничений по сети."""
+    networks = []
+    for value in settings.SNC_PANEL_ALLOW:
+        networks.append(str(ipaddress.ip_network(value, strict=False)))
+    if not networks:
+        return ''
+    lines = ''.join(f'    allow {network};\n' for network in dict.fromkeys(['127.0.0.1/32', *networks]))
+    return lines + '    deny all;\n\n'
+
+
 def _nginx_config():
     _, certificate_path, key_path, _ = _paths()
     host = _panel_host()
+    access = _access_rules()
     return f'''{PANEL_TLS_MARKER}
 server {{
     listen 0.0.0.0:{PANEL_TLS_PORT} ssl default_server;
@@ -118,7 +130,7 @@ server {{
     ssl_session_cache shared:smallnginxcontrol_tls:10m;
     ssl_session_timeout 1d;
 
-    location / {{
+{access}    location / {{
         proxy_pass http://127.0.0.1:{settings.SNC_PORT};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
