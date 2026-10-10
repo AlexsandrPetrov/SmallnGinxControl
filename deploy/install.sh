@@ -143,7 +143,7 @@ fi
 # Каталоги, которые nginx.conf подключает целиком (include /etc/nginx/vhosts/*;) — сайты в них
 # панель включает и отключает переносом в <каталог>.disabled.
 FLAT_SITE_DIRS=${SNC_FLAT_SITE_DIRS-$(grep -hoE '^[[:space:]]*include[[:space:]]+(/etc/nginx/)?[A-Za-z0-9_-]+/\*;' /etc/nginx/nginx.conf 2>/dev/null \
-    | sed -E 's#^[[:space:]]*include[[:space:]]+(/etc/nginx/)?##; s#/\*;$##' | grep -vxE 'sites-enabled|conf\.d|modules' | paste -sd, -)}
+    | sed -E 's#^[[:space:]]*include[[:space:]]+(/etc/nginx/)?##; s#/\*;$##' | { grep -vxE 'sites-enabled|conf\.d|modules' || true; } | paste -sd, -)}
 NEW_SITE_DIR=${SNC_NEW_SITE_DIR:-conf.d}
 if [[ -n $FLAT_SITE_DIRS ]]; then
     printf 'Site directories included as a whole: %s\n' "$FLAT_SITE_DIRS"
